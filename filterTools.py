@@ -149,7 +149,6 @@ class BT(object):
         histr_image = []
         for image in self.input_gray:
             histogram = []
-            lcol, lrow = image.shape
             histr = np.linspace(0, 255, 256)
             for k in range(256):
                 mask = image[image == histr[k]]
