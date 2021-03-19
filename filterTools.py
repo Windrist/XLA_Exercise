@@ -1,6 +1,7 @@
 import cv2
 import os
 import numpy as np
+import math
 
 
 def update_mean(image, y, x):
@@ -23,6 +24,59 @@ def update_median(image, y, x):
     pixel_list.sort()
     image[y][x] = pixel_list[4]
     return image
+
+
+def update_sobel(image, y, x):
+    Gx = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
+    Gy = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+    S1 = 0
+    S2 = 0
+
+    for i in range(y - 1, y + 2):
+        for j in range(x - 1, x + 2):
+            S1 += Gx[i-(y-1)][j-(x-1)] * image[i][j]
+            S2 += Gy[i-(y-1)][j-(x-1)] * image[i][j]
+    return np.sqrt(S1*S1 + S2*S2)
+
+
+def update_laplacian(image, y, x):
+    M1 = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]])
+    M2 = np.array([[1, -2, 1], [-2, 4, -2], [1, -2, 1]])
+    M3 = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
+    L1 = 0
+    L2 = 0
+
+    for i in range(y - 1, y + 2):
+        for j in range(x - 1, x + 2):
+            L1 += M1[i-(y-1)][j-(x-1)] * image[i][j]
+            L2 += M1[i-(y-1)][j-(x-1)] * image[i][j]
+    return L1 + L2
+
+
+def get_log(sigma):
+    mask_length = math.ceil(float(3) * float(sigma))
+    if(mask_length % 2 == 0):
+        mask_length = mask_length + 1
+    M = np.zeros((mask_length, mask_length))
+
+    for i in range(0, mask_length):
+        for j in range(0, mask_length):
+            nom = j**2 + i**2 - 2*(sigma**2)
+            denom = 2 * math.pi * (sigma**6)
+            expo = math.exp(-(i**2 + j**2) / (2*(sigma**2)))
+            M[i][j] = nom * expo / denom
+    return M
+
+
+def update_laplacian_gaussian(image, y, x, M, mcol):
+    L1 = 0
+    L2 = 0
+
+    for i in range(y - mcol, y + mcol + 1):
+        for j in range(x - mcol, x + mcol + 1):
+            L1 += M[i-(y-1)][j-(x-1)] * image[i][j]
+            L2 += M[i-(y-1)][j-(x-1)] * image[i][j]
+    return L1 + L2
 
 
 class BT(object):
@@ -89,10 +143,54 @@ class BT(object):
                     image = update_median(image, i, j)
             median_image.append(image)
         return median_image
+    
+    # Main Code for Calculate Histogram
+    def calc_histogram(self):
+        histr_image = []
+        for image in self.input_gray:
+            histogram = []
+            lcol, lrow = image.shape
+            histr = np.linspace(0, 255, 256)
+            for k in range(256):
+                mask = image[image == histr[k]]
+                histogram.append(len(mask))
+            histr_image.append(histogram)
+        return histr_image
+    
+    # Main Code for Gradient Sobel in Detect Edge Application
+    def edge_sobel(self):
+        edge_image = []
+        for image in self.input_gray:
+            lcol, lrow = image.shape
+            output_image = np.zeros((lcol, lrow))
+            for i in range(1, lcol - 1):
+                for j in range(1, lrow - 1):
+                    output_image[i][j] = update_sobel(image, i, j)
+            edge_image.append(output_image)
+        return edge_image
 
+    # Main Code for Laplacian in Detect Edge Application
+    def edge_laplacian(self):
+        edge_image = []
+        for image in self.input_gray:
+            lcol, lrow = image.shape
+            output_image = np.zeros((lcol, lrow))
+            for i in range(1, lcol - 1):
+                for j in range(1, lrow - 1):
+                    output_image[i][j] = update_laplacian(image, i, j)
+            edge_image.append(output_image)
+        return edge_image
 
-
-
-
-
-
+    # Main Code for Laplacian of Gaussian in Detect Edge Application 
+    def edge_laplacian_gaussian(self, sigma):
+        edge_image = []
+        for image in self.input_gray:
+            lcol, lrow = image.shape
+            M = get_log(sigma)
+            mcol = int(math.floor(M.shape[0]/2))
+            output_image = np.zeros((lcol, lrow))
+            for i in range(mcol, lcol - mcol):
+                for j in range(mcol, lrow - mcol):
+                    output_image[i][j] = update_laplacian_gaussian(image, i, j, M, mcol)
+            edge_image.append(output_image)
+        return edge_image
